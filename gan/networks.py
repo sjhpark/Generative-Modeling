@@ -11,11 +11,9 @@ class UpSampleConv2D(torch.jit.ScriptModule):
         n_filters=128,
         upscale_factor=2,
         padding=0,
-    ):
+        ):
         super(UpSampleConv2D, self).__init__()
-        self.conv = nn.Conv2d(
-            input_channels, n_filters, kernel_size=kernel_size, padding=padding
-        )
+        self.conv = nn.Conv2d(in_channels=input_channels, out_channels=n_filters, kernel_size=kernel_size, padding=padding)
         self.upscale_factor = upscale_factor
 
     @torch.jit.script_method
@@ -27,7 +25,22 @@ class UpSampleConv2D(torch.jit.ScriptModule):
         # (batch, channel, height*upscale_factor, width*upscale_factor)
         # 3. Apply convolution and return output
         ##################################################################
-        pass
+        # Input x: shape (B,C,H,W)
+        
+        # 1. Repeat x channel-wise upscale factor^2 times
+        # shape (B,C,H,W) -> (B,C*r^2,H,W) where r is an upscale factor
+        x = x.repeat(1, self.upscale_factor**2, 1, 1) # (B,C*r^2,H,W)
+
+        # 2. Use torch.nn.PixelShuffle to form an output of dimension.
+        # Rearrange elements in a tensor of shape (B,C*r^2,H,W) -> (B,C,H*r,W*r) where r is an upscale factor.
+        # This is useful for implementing efficient sub-pixel convolution with a stride of 1/r.
+        # Reference: https://pytorch.org/docs/stable/generated/torch.nn.PixelShuffle.html
+        pixel_shuffle = nn.PixelShuffle(self.upscale_factor)
+        x = pixel_shuffle(x) # (B,C,H*r,W*r)
+
+        # 3. Apply convolution and return output.
+        # (B,C,H*r,W*r) -> CONV LAYER -> (B, C, [(H*r−K+2P)/S]+1, [(W*r−K+2P)/S]+1) where K is kernel size, P is padding, S is stride
+        x = self.conv(x) # (B, n_filters, [(H*r−K+2P)/S]+1, [(W*r−K+2P)/S]+1)
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -36,11 +49,9 @@ class UpSampleConv2D(torch.jit.ScriptModule):
 class DownSampleConv2D(torch.jit.ScriptModule):
     def __init__(
         self, input_channels, kernel_size=3, n_filters=128, downscale_ratio=2, padding=0
-    ):
+        ):
         super(DownSampleConv2D, self).__init__()
-        self.conv = nn.Conv2d(
-            input_channels, n_filters, kernel_size=kernel_size, padding=padding
-        )
+        self.conv = nn.Conv2d(in_channels=input_channels, out_channels=n_filters, kernel_size=kernel_size, padding=padding)
         self.downscale_ratio = downscale_ratio
 
     @torch.jit.script_method
@@ -54,7 +65,21 @@ class DownSampleConv2D(torch.jit.ScriptModule):
         # 3. Take the average across dimension 0, apply convolution,
         # and return the output
         ##################################################################
-        pass
+        # Input x: shape (B,C,H,W)
+
+        # 1. Use torch.nn.PixelUnshuffle to form an output of dimension
+        # Rearrange elements in a tensor of shape (B,C,H,W) -> (B,C*r^2,H/r,W/r)
+        # Then rearrange elements in a tensor of shape (B,C*r^2,H/r,W/r) -> (B,C,r^2,H/r,W/r)
+        downscale_factor = self.upscale_factor
+        pixel_unshuffle = nn.PixelUnshuffle(downscale_ratio)
+        x = pixel_unshuffle(x) # (B,C*r^2,H/r,W/r)
+        x = x.reshape(x.shape[0], x.shape[1]//downscale_factor**2, downscale_factor**2, x.shape[2], x.shape[3]) # (B,C,r^2,H/r,W/r)
+
+        # 2. Rearrange shape from (B,C,r^2,H/r,W/r) -> (r^2,B,C,H/r,W/r).
+        x = x.permute(2,0,1,3,4) # (r^2,B,C,H/r,W/r)
+
+        # 3. Take the average across dimension 0, and apply convolution and return the output.
+        x = torch.mean(x, dim=0) # (B,C,H/r,W/r)
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -83,7 +108,15 @@ class ResBlockUp(torch.jit.ScriptModule):
         ##################################################################
         # TODO 1.1: Setup the network layers
         ##################################################################
-        self.layers = None
+        self.layers = nn.Sequential(
+                                    nn.BatchNorm2d(num_features=input_channels, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+                                    nn.ReLU(),
+                                    nn.Conv2d(in_channels=in_channels, out_channels=n_filters, kernel_size=3, stride=1, padding=1, bias=False),
+                                    nn.BatchNorm2d(num_features=n_filters, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+                                    nn.ReLU(),
+                                    UpSampleConv2D(input_channels=n_filters, n_filters=n_filters, kerner_size=3, padding=1)
+                                    )
+        self.upsample_residual = UpsampleConv2D(input_channels=input_channels, n_filters=n_filters, kernel_size=1)
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -95,7 +128,7 @@ class ResBlockUp(torch.jit.ScriptModule):
         # connection. Make sure to upsample the residual before adding it
         # to the layer output.
         ##################################################################
-        pass
+        x = self.layers(x) + self.upsample_residual(x)
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -122,7 +155,13 @@ class ResBlockDown(torch.jit.ScriptModule):
         ##################################################################
         # TODO 1.1: Setup the network layers
         ##################################################################
-        self.layers = None
+        self.layers = nn.Sequential(
+                                    nn.ReLU(),
+                                    nn.Conv2d(in_channels=input_channels, out_channels=n_filters, kernel_size=3, stride=1, padding=1),
+                                    nn.ReLU(),
+                                    DownSampleConv2D(input_channels=n_filters, n_filters=n_filters, kernel_size=3, padding=1)
+                                    )
+        self.downsample_residual = DownSampleConv2D(in_channels=input_channels, out_channels=n_filters, kernel_size=1)
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -134,7 +173,7 @@ class ResBlockDown(torch.jit.ScriptModule):
         # connection. Make sure to downsample the residual before adding
         # it to the layer output.
         ##################################################################
-        pass
+        x = self.layers(x) + self.downsample_residual(x)
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -157,7 +196,12 @@ class ResBlock(torch.jit.ScriptModule):
         ##################################################################
         # TODO 1.1: Setup the network layers
         ##################################################################
-        self.layers = None
+        self.layers = nn.Sequential(
+                                    nn.ReLU(),
+                                    nn.Conv2d(in_channels=input_channels, out_channels=n_filters, kernel_size=3, stride=1, padding=1),
+                                    nn.ReLU(),
+                                    nn.Conv2d(in_channels=n_filters, out_channels=n_filters, kernel_size=3, stride=1, padding=1)
+                                    )
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -168,7 +212,7 @@ class ResBlock(torch.jit.ScriptModule):
         # TODO 1.1: Forward the conv layers. Don't forget the residual
         # connection!
         ##################################################################
-        pass
+        x = self.layers(x) + x
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
