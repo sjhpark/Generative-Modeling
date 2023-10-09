@@ -70,8 +70,9 @@ class DownSampleConv2D(torch.jit.ScriptModule):
         # 1. Use torch.nn.PixelUnshuffle to form an output of dimension
         # Rearrange elements in a tensor of shape (B,C,H,W) -> (B,C*r^2,H/r,W/r)
         # Then rearrange elements in a tensor of shape (B,C*r^2,H/r,W/r) -> (B,C,r^2,H/r,W/r)
-        downscale_factor = self.upscale_factor
-        pixel_unshuffle = nn.PixelUnshuffle(downscale_ratio)
+        # downscale_factor = self.upscale_factor
+        downscale_factor = self.downscale_ratio
+        pixel_unshuffle = nn.PixelUnshuffle(self.downscale_ratio)
         x = pixel_unshuffle(x) # (B,C*r^2,H/r,W/r)
         x = x.reshape(x.shape[0], x.shape[1]//downscale_factor**2, downscale_factor**2, x.shape[2], x.shape[3]) # (B,C,r^2,H/r,W/r)
 
