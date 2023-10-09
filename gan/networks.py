@@ -111,12 +111,12 @@ class ResBlockUp(torch.jit.ScriptModule):
         self.layers = nn.Sequential(
                                     nn.BatchNorm2d(num_features=input_channels, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
                                     nn.ReLU(),
-                                    nn.Conv2d(in_channels=in_channels, out_channels=n_filters, kernel_size=3, stride=1, padding=1, bias=False),
+                                    nn.Conv2d(in_channels=input_channels, out_channels=n_filters, kernel_size=3, stride=1, padding=1, bias=False),
                                     nn.BatchNorm2d(num_features=n_filters, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
                                     nn.ReLU(),
                                     UpSampleConv2D(input_channels=n_filters, n_filters=n_filters, kerner_size=3, padding=1)
                                     )
-        self.upsample_residual = UpsampleConv2D(input_channels=input_channels, n_filters=n_filters, kernel_size=1)
+        self.upsample_residual = UpSampleConv2D(input_channels=input_channels, n_filters=n_filters, kernel_size=1)
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -161,7 +161,7 @@ class ResBlockDown(torch.jit.ScriptModule):
                                     nn.ReLU(),
                                     DownSampleConv2D(input_channels=n_filters, n_filters=n_filters, kernel_size=3, padding=1)
                                     )
-        self.downsample_residual = DownSampleConv2D(in_channels=input_channels, out_channels=n_filters, kernel_size=1)
+        self.downsample_residual = DownSampleConv2D(input_channels=input_channels, n_filters=n_filters, kernel_size=1)
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -281,8 +281,14 @@ class Generator(torch.jit.ScriptModule):
         # TODO 1.1: Set up the network layers. You should use the modules
         # you have implemented previously above.
         ##################################################################
-        self.dense = None
-        self.layers = None
+        self.dense = nn.Linear(in_features=128, out_features=2048, bias=True)
+        self.layers = nn.Sequential(
+                                    [ResBlockUp(input_channels=128, n_filters=128, kernel_size=3) for _ in range(3)],
+                                    nn.BatchNorm2d(num_features=128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+                                    nn.ReLU(),
+                                    nn.Conv2d(in_channels=128, out_channels=3, kernel_size=3, stride=1, padding=1),
+                                    nn.Tanh()
+                                    )
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -294,18 +300,22 @@ class Generator(torch.jit.ScriptModule):
         # been passed in. Don't forget to re-shape the output of the dense
         # layer into an image with the appropriate size!
         ##################################################################
-        pass
+        x = self.dense(z) # (n_samples, 2048)
+        x = x.view(-1, 128, 4, 4) # (n_samples, C=128, H=4, W=4)
+        x = self.layers(x) # (n_samples, C=3, H=[(H−K+2P)/S]+1=[(4-3+2*1)/1]+1=4, W=[(W−K+2P)/S]+1=[(4-3+2*1)/1]+1=4)
+        return x
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
 
     @torch.jit.script_method
-    def forward(self, n_samples: int = 1024):
+    def forward(self, n_samples:int=1024):
         ##################################################################
         # TODO 1.1: Generate n_samples latents and forward through the
         # network.
         ##################################################################
-        pass
+        z = torch.randn(n_samples, 128) # (n_samples, 128); n_samples of noise from a Gaussian/Normal distribution (mu=0, sigma=1)
+        return self.forward_given_samples(z) # (n_samples, C=3, H=4, W=4)
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -369,8 +379,13 @@ class Discriminator(torch.jit.ScriptModule):
         # TODO 1.1: Set up the network layers. You should use the modules
         # you have implemented previously above.
         ##################################################################
-        self.dense = None
-        self.layers = None
+        self.layers = nn.Sequential(
+                                    ResBlockDown(input_channels=3, n_filters=128, kernel_size=3),
+                                    ResBlockDown(input_channels=128, n_filters=128, kernel_size=3),
+                                    ResBlock(input_channels=128, n_filters=128, kernel_size=3),
+                                    nn.ReLU()
+                                    )
+        self.dense = nn.Linear(in_features=128, out_features=1, bias=True)
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -382,7 +397,9 @@ class Discriminator(torch.jit.ScriptModule):
         # have been passed in. Make sure to sum across the image
         # dimensions after passing x through self.layers.
         ##################################################################
-        pass
+        x = self.layers(x) # (n_samples, C=128, H=[(H−K+2P)/S]+1=[(4-3+2*1)/1]+1=4, W=[(W−K+2P)/S]+1=[(4-3+2*1)/1]+1=4)
+        x = torch.sum(x, dim=(2,3)) # (n_samples, C=128)
+        x = self.dense(x) # (n_samples, 1)
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
