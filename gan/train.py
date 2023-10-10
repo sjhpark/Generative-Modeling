@@ -13,7 +13,8 @@ def build_transforms():
     # 1. Convert input image to tensor.
     # 2. Rescale input image from [0., 1.] to be between [-1., 1.].
     rescaling = lambda x: (x - 0.5) * 2.0
-    ds_transforms = transforms.Compose([transforms.ToTensor(), rescaling])
+    ds_transforms = transforms.Compose([transforms.ToTensor(), 
+                                        rescaling])
     return ds_transforms
 
 
@@ -28,8 +29,11 @@ def get_optimizers_and_schedulers(gen, disc):
     # The learning rate for the generator should be decayed to 0 over
     # 100K iterations.
     ##################################################################
-    scheduler_discriminator = None
-    scheduler_generator = None
+    lr_labmda_discriminator = lambda epoch: 1 - epoch/500000 # multiplicative factor to learning rate (at each epoch)
+    scheduler_discriminator = torch.optim.lr_scheduler.LambdaLR(optim_discriminator, lr_labmda_discriminator)
+
+    lr_labmda_generator = lambda epoch: 1 - epoch/100000
+    scheduler_generator = torch.optim.lr_scheduler.LambdaLR(optim_generator, lr_labmda_generator)
     ##################################################################
     #                          END OF YOUR CODE                      #
     ##################################################################
@@ -68,7 +72,8 @@ def train_model(
     disc_loss_fn=None,
     log_period=10000,
     amp_enabled=True,
-):
+    ):
+
     torch.backends.cudnn.benchmark = True # speed up training
     ds_transforms = build_transforms()
     train_loader = torch.utils.data.DataLoader(
@@ -77,14 +82,12 @@ def train_model(
         shuffle=True,
         num_workers=4,
         pin_memory=True,
-    )
+        )
 
-    (
-        optim_discriminator,
-        scheduler_discriminator,
-        optim_generator,
-        scheduler_generator,
-    ) = get_optimizers_and_schedulers(gen, disc)
+    (optim_discriminato,
+    scheduler_discriminator,
+    optim_generator,
+    scheduler_generator) = get_optimizers_and_schedulers(gen, disc)
 
     scaler = torch.cuda.amp.GradScaler()
 
@@ -105,8 +108,12 @@ def train_model(
                 # 2. Compute discriminator output on the train batch.
                 # 3. Compute the discriminator output on the generated data.
                 ##################################################################
-                discrim_real = None
-                discrim_fake = None
+                # 1. Compute generator output
+                generated_data = gen() # (B=n_samples=1024 as default, C, H, W); Generated data from generator & noise from Gaussian distribution as input
+                # 2. Compute discriminator output on the train batch.
+                discrim_real = disc(train_batch) # (B=n_samples, 1); Discriminator output on real data
+                # 3. Compute the discriminator output on the generated data.
+                discrim_fake = disc(generated_data) # (B=n_samples, 1); Discriminator output on generated data
                 ##################################################################
                 #                          END OF YOUR CODE                      #
                 ##################################################################
@@ -121,9 +128,7 @@ def train_model(
                 #                          END OF YOUR CODE                      #
                 ##################################################################
 
-            discriminator_loss = disc_loss_fn(
-                discrim_real, discrim_fake, discrim_interp, interp, lamb
-            )
+            discriminator_loss = disc_loss_fn(discrim_real, discrim_fake, discrim_interp, interp, lamb)
             
             optim_discriminator.zero_grad(set_to_none=True)
             scaler.scale(discriminator_loss).backward()
@@ -133,11 +138,11 @@ def train_model(
             if iters % 5 == 0:
                 with torch.cuda.amp.autocast(enabled=amp_enabled):
                     ##################################################################
-                    # TODO 1.2: Compute generator and discriminator output on
-                    # generated data.
+                    # TODO 1.2: Generate data from generator. 
+                    # Then, compute discriminator output on generated data.
                     ###################################################################
-                    fake_batch = None
-                    discrim_fake = None
+                    fake_batch = gen() # (B=n_samples, C, H, W); Generated data from generator & noise from Gaussian distribution as input
+                    discrim_fake = disc(fake_batch) # (B=n_samples, 1); Discriminator output on generated data
                     ##################################################################
                     #                          END OF YOUR CODE                      #
                     ##################################################################
@@ -156,7 +161,11 @@ def train_model(
                         # TODO 1.2: Generate samples using the generator.
                         # Make sure they lie in the range [0, 1]!
                         ##################################################################
-                        generated_samples = None
+                        generated_samples = gen() # (B=n_samples, C, H, W); Generated data from generator & noise from Gaussian distribution as input
+                        
+                        # Normalize generated samples to lie in the range [0, 1]
+                        sample_min, sample_max = torch.min(generated_samples), torch.max(generated_samples)
+                        generated_samples = (generated_samples - sample_min) / (sample_max - sample_min) # (B=n_samples, C, H, W)
                         ##################################################################
                         #                          END OF YOUR CODE                      #
                         ##################################################################

@@ -302,8 +302,8 @@ class Generator(torch.jit.ScriptModule):
         # layer into an image with the appropriate size!
         ##################################################################
         x = self.dense(z) # (n_samples, 2048)
-        x = x.view(-1, 128, 4, 4) # (n_samples, C=128, H=4, W=4)
-        x = self.layers(x) # (n_samples, C=3, H=[(H−K+2P)/S]+1=[(4-3+2*1)/1]+1=4, W=[(W−K+2P)/S]+1=[(4-3+2*1)/1]+1=4)
+        x = x.view(-1, 128, 4, 4) # (B=n_samples, C=128, H=4, W=4)
+        x = self.layers(x) # (B=n_samples, C=3, H=[(H−K+2P)/S]+1=[(4-3+2*1)/1]+1=4, W=[(W−K+2P)/S]+1=[(4-3+2*1)/1]+1=4)
         return x
         ##################################################################
         #                          END OF YOUR CODE                      #
@@ -315,8 +315,8 @@ class Generator(torch.jit.ScriptModule):
         # TODO 1.1: Generate n_samples latents and forward through the
         # network.
         ##################################################################
-        z = torch.randn(n_samples, 128) # (n_samples, 128); n_samples of noise from a Gaussian/Normal distribution (mu=0, sigma=1)
-        return self.forward_given_samples(z) # (n_samples, C=3, H=4, W=4)
+        z = torch.randn(n_samples, 128).cuda() # (B=n_samples, 128); n_samples of noise from a Gaussian/Normal distribution (mu=0, sigma=1)
+        return self.forward_given_samples(z) # (B=n_samples, C=3, H=4, W=4)
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -398,9 +398,9 @@ class Discriminator(torch.jit.ScriptModule):
         # have been passed in. Make sure to sum across the image
         # dimensions after passing x through self.layers.
         ##################################################################
-        x = self.layers(x) # (n_samples, C=128, H=[(H−K+2P)/S]+1=[(4-3+2*1)/1]+1=4, W=[(W−K+2P)/S]+1=[(4-3+2*1)/1]+1=4)
+        x = self.layers(x) # (B=n_samples, C=128, H=[(H−K+2P)/S]+1=[(4-3+2*1)/1]+1=4, W=[(W−K+2P)/S]+1=[(4-3+2*1)/1]+1=4)
         x = torch.sum(x, dim=(2,3)) # (n_samples, C=128)
-        x = self.dense(x) # (n_samples, 1)
+        x = self.dense(x) # (B=n_samples, 1)
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
