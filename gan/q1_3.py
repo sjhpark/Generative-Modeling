@@ -9,15 +9,37 @@ import torch.nn.functional as F
 from train import train_model
 
 
-def compute_discriminator_loss(
-    discrim_real, discrim_fake, discrim_interp, interp, lamb
-):
+def compute_discriminator_loss(discrim_real, discrim_fake, discrim_interp, interp, lamb):
     ##################################################################
     # TODO 1.3: Implement GAN loss for discriminator.
     # Do not use discrim_interp, interp, lamb. They are placeholders
     # for Q1.5.
     ##################################################################
-    loss = None
+    '''
+    discrim_real: D(x)
+    discrim_fake: D(G(z))
+        x: real image
+        z: random noise
+        D: discriminator network
+        G: generator network
+    '''
+    def sigmoid(x):
+        return 1 / (1 + torch.exp(-x))
+
+    def BCE_loss_with_logits(input, target):
+        eps = 1e-8 # epsilon to avoid NaN
+        loss = -torch.mean(
+                        target * torch.log(sigmoid(input) + eps) +
+                        (1 - target) * torch.log(1 - sigmoid(input) + eps)
+                        )
+        return loss
+    
+    real_label = torch.ones_like(discrim_real) # [1, 1, 1, ...]
+    fake_label = torch.zeros_like(discrim_fake) # [0, 0, 0, ...]
+    loss_real = BCE_loss_with_logits(input=discrim_real, target=real_label)
+    loss_fake = BCE_loss_with_logits(input=discrim_fake, target=fake_label)
+
+    loss = loss_real + loss_fake
     ##################################################################
     #                          END OF YOUR CODE                      #
     ##################################################################
@@ -28,7 +50,25 @@ def compute_generator_loss(discrim_fake):
     ##################################################################
     # TODO 1.3: Implement GAN loss for the generator.
     ##################################################################
-    loss = None
+    '''
+    discrim_fake: D(G(z))
+        z: random noise
+        G: generator network
+        D: discriminator network
+    '''
+    def sigmoid(x):
+        return 1 / (1 + torch.exp(-x))
+
+    def BCE_loss_with_logits(input, target):
+        eps = 1e-8 # epsilon to avoid NaN
+        loss = -torch.mean(
+                        target * torch.log(sigmoid(input) + eps) +
+                        (1 - target) * torch.log(1 - sigmoid(input) + eps)
+                        )
+        return loss
+    
+    real_label = torch.ones_like(discrim_fake) # [1, 1, 1, ...]
+    loss = BCE_loss_with_logits(input=discrim_fake, target=real_label)
     ##################################################################
     #                          END OF YOUR CODE                      #
     ##################################################################

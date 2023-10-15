@@ -41,6 +41,8 @@ class UpSampleConv2D(torch.jit.ScriptModule):
         # 3. Apply convolution and return output.
         # (B,C,H*r,W*r) -> CONV LAYER -> (B, C, [(H*r−K+2P)/S]+1, [(W*r−K+2P)/S]+1) where K is kernel size, P is padding, S is stride
         x = self.conv(x) # (B, n_filters, [(H*r−K+2P)/S]+1, [(W*r−K+2P)/S]+1)
+
+        return x
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -81,6 +83,9 @@ class DownSampleConv2D(torch.jit.ScriptModule):
 
         # 3. Take the average across dimension 0, and apply convolution and return the output.
         x = torch.mean(x, dim=0) # (B,C,H/r,W/r)
+        x = self.conv(x) # (B, n_filters, [(H*r−K+2P)/S]+1, [(W*r−K+2P)/S]+1)
+
+        return x
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -115,7 +120,7 @@ class ResBlockUp(torch.jit.ScriptModule):
                                     nn.Conv2d(in_channels=input_channels, out_channels=n_filters, kernel_size=3, stride=1, padding=1, bias=False),
                                     nn.BatchNorm2d(num_features=n_filters, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
                                     nn.ReLU(),
-                                    UpSampleConv2D(input_channels=n_filters, n_filters=n_filters, kerner_size=3, padding=1)
+                                    UpSampleConv2D(input_channels=n_filters, n_filters=n_filters, kernel_size=3, padding=1)
                                     )
         self.upsample_residual = UpSampleConv2D(input_channels=input_channels, n_filters=n_filters, kernel_size=1)
         ##################################################################
@@ -130,6 +135,7 @@ class ResBlockUp(torch.jit.ScriptModule):
         # to the layer output.
         ##################################################################
         x = self.layers(x) + self.upsample_residual(x)
+        return x
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -175,6 +181,7 @@ class ResBlockDown(torch.jit.ScriptModule):
         # it to the layer output.
         ##################################################################
         x = self.layers(x) + self.downsample_residual(x)
+        return x
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -214,6 +221,7 @@ class ResBlock(torch.jit.ScriptModule):
         # connection!
         ##################################################################
         x = self.layers(x) + x
+        return x
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -283,8 +291,9 @@ class Generator(torch.jit.ScriptModule):
         # you have implemented previously above.
         ##################################################################
         self.dense = nn.Linear(in_features=128, out_features=2048, bias=True)
+
         self.layers = nn.Sequential(
-                                    [ResBlockUp(input_channels=128, n_filters=128, kernel_size=3) for _ in range(3)],
+                                    *[ResBlockUp(input_channels=128, n_filters=128, kernel_size=3) for _ in range(3)],
                                     nn.BatchNorm2d(num_features=128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
                                     nn.ReLU(),
                                     nn.Conv2d(in_channels=128, out_channels=3, kernel_size=3, stride=1, padding=1),
@@ -401,6 +410,7 @@ class Discriminator(torch.jit.ScriptModule):
         x = self.layers(x) # (B=n_samples, C=128, H=[(H−K+2P)/S]+1=[(4-3+2*1)/1]+1=4, W=[(W−K+2P)/S]+1=[(4-3+2*1)/1]+1=4)
         x = torch.sum(x, dim=(2,3)) # (n_samples, C=128)
         x = self.dense(x) # (B=n_samples, 1)
+        return x
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################

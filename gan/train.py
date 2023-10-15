@@ -37,12 +37,10 @@ def get_optimizers_and_schedulers(gen, disc):
     ##################################################################
     #                          END OF YOUR CODE                      #
     ##################################################################
-    return (
-        optim_discriminator,
-        scheduler_discriminator,
-        optim_generator,
-        scheduler_generator,
-    )
+    return (optim_discriminator,
+            scheduler_discriminator,
+            optim_generator,
+            scheduler_generator)
 
 
 class Dataset(VisionDataset):
@@ -84,7 +82,7 @@ def train_model(
         pin_memory=True,
         )
 
-    (optim_discriminato,
+    (optim_discriminator,
     scheduler_discriminator,
     optim_generator,
     scheduler_generator) = get_optimizers_and_schedulers(gen, disc)
