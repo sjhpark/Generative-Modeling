@@ -16,8 +16,8 @@ def compute_discriminator_loss(discrim_real, discrim_fake, discrim_interp, inter
     # for Q1.5.
     ##################################################################
     '''
-    discrim_real: D(x)
-    discrim_fake: D(G(z))
+    discrim_real: D(x) <-- Discriminator's predicted probability on real data
+    discrim_fake: D(G(z)) <-- Discriminator's predicted probability on fake data
         x: real image
         z: random noise
         D: discriminator network
@@ -51,7 +51,7 @@ def compute_generator_loss(discrim_fake):
     # TODO 1.3: Implement GAN loss for the generator.
     ##################################################################
     '''
-    discrim_fake: D(G(z))
+    discrim_fake: D(G(z)) <-- Discriminator's predicted probability on fake data
         z: random noise
         G: generator network
         D: discriminator network
@@ -90,6 +90,9 @@ if __name__ == "__main__":
         prefix=prefix,
         gen_loss_fn=compute_generator_loss,
         disc_loss_fn=compute_discriminator_loss,
-        log_period=1000,
+        # log_period=1000,
+        ############ FOR DEBIGGING ############
+        log_period=5,
+        #######################################
         amp_enabled=not args.disable_amp,
     )

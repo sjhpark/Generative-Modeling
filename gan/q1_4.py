@@ -19,7 +19,7 @@ def compute_discriminator_loss(
     '''
     LSGAN (Least Squares GAN) loss for discriminator
     Least Squares Generative Adversarial Networks (Mao etclassification al, 2016): https://arxiv.org/pdf/1611.04076.pdf
-    
+
     discrim_real: D(x) <-- Discriminator's predicted probability on real data
     discrim_fake: D(G(z)) <-- Discriminator's predicted probability on fake data
         x: real image
@@ -45,10 +45,13 @@ def compute_generator_loss(discrim_fake):
     # TODO: 1.4: Implement LSGAN loss for generator.
     ##################################################################
     '''
-        discrim_fake: D(G(z)) <-- Discriminator's predicted probability on fake data
-            z: random noise
-            G: generator network
-            D: discriminator network
+    LSGAN (Least Squares GAN) loss for generator
+    Least Squares Generative Adversarial Networks (Mao etclassification al, 2016): https://arxiv.org/pdf/1611.04076.pdf
+
+    discrim_fake: D(G(z)) <-- Discriminator's predicted probability on fake data
+        z: random noise
+        G: generator network
+        D: discriminator network
     '''
     def MSE_loss(input, target):
         return torch.mean((input - target)**2)

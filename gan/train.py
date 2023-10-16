@@ -71,7 +71,7 @@ def train_model(
     log_period=10000,
     amp_enabled=True,
     ):
-
+    
     torch.backends.cudnn.benchmark = True # speed up training
     ds_transforms = build_transforms()
     train_loader = torch.utils.data.DataLoader(
@@ -107,11 +107,15 @@ def train_model(
                 # 3. Compute the discriminator output on the generated data.
                 ##################################################################
                 # 1. Compute generator output
-                generated_data = gen() # (B=n_samples=1024 as default, C, H, W); Generated data from generator & noise from Gaussian distribution as input
+                n_samples = train_batch.shape[0] # batch size
+                generated_data = gen(n_samples) # (B=n_samples, C=3, H=32, W=32); Generated data
+
                 # 2. Compute discriminator output on the train batch.
                 discrim_real = disc(train_batch) # (B=n_samples, 1); Discriminator output on real data
+
                 # 3. Compute the discriminator output on the generated data.
                 discrim_fake = disc(generated_data) # (B=n_samples, 1); Discriminator output on generated data
+
                 ##################################################################
                 #                          END OF YOUR CODE                      #
                 ##################################################################
@@ -120,8 +124,17 @@ def train_model(
                 # TODO 1.5 Compute the interpolated batch and run the
                 # discriminator on it.
                 ###################################################################
-                interp = None
-                discrim_interp = None
+                '''
+                Algorithm 1 in Improved Training of Wasserstein GANs (Gulrajani et al, 2017) https://arxiv.org/pdf/1704.00028.pdf
+                '''
+                x = train_batch # batch of real data
+                eps = torch.rand(1).to(x.device) # random number from uniform distribution w/ range [0,1]
+
+                x_tilde = generated_data # generated batch from generator
+                x_hat = eps * x + (1 - eps) * x_tilde # interpolated batch
+
+                interp = x_hat # interpolated batch
+                discrim_interp = disc(interp) # D(x_hat)
                 ##################################################################
                 #                          END OF YOUR CODE                      #
                 ##################################################################
@@ -172,7 +185,8 @@ def train_model(
                         prefix + "samples_{}.png".format(iters),
                         nrow=10,
                     )
-                    if os.environ.get('PYTORCH_JIT', 1):
+                    # if os.environ.get('PYTORCH_JIT', 1):
+                    if os.environ.get('PYTORCH_JIT') == '1':
                         torch.jit.save(torch.jit.script(gen), prefix + "/generator.pt")
                         torch.jit.save(torch.jit.script(disc), prefix + "/discriminator.pt")
                     else:

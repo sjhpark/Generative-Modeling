@@ -292,10 +292,7 @@ class Generator(torch.jit.ScriptModule):
         ##################################################################
         self.starting_image_size = starting_image_size
 
-        # self.dense = nn.Linear(in_features=128, out_features=2048, bias=True)
-        ##################### FOR DEBUGGING ##############################
-        self.dense = nn.Linear(in_features=128, out_features=256, bias=True)
-        ##################################################################
+        self.dense = nn.Linear(in_features=128, out_features=2048, bias=True)
 
         self.layers = nn.Sequential(
                                     *[ResBlockUp(input_channels=128, n_filters=128, kernel_size=3) for _ in range(3)],
@@ -317,7 +314,7 @@ class Generator(torch.jit.ScriptModule):
         ##################################################################
         x = self.dense(z) # (n_samples, 2048)
         x = x.view(-1, 128, self.starting_image_size, self.starting_image_size) # (B=n_samples, C=128, H=img_size, W=img_size)
-        x = self.layers(x) # (B=n_samples, C=3, H=[(H−K+2P)/S]+1=[(img_size-3+2*1)/1]+1=img_size, W=[(W−K+2P)/S]+1=[(img_size-3+2*1)/1]+1=img_size)
+        x = self.layers(x) # (B=n_samples, C=3, H=img_size*2^3, W=img_size*2^3)
         return x
         ##################################################################
         #                          END OF YOUR CODE                      #
@@ -330,11 +327,10 @@ class Generator(torch.jit.ScriptModule):
         # network.
         ##################################################################
         z = torch.randn(n_samples, 128).cuda() # (B=n_samples, 128); n_samples of noise from a Gaussian/Normal distribution (mu=0, sigma=1)
-        return self.forward_given_samples(z) # (B=n_samples, C=3, H=4, W=4)
+        return self.forward_given_samples(z) # (B=n_samples, C=3, H=img_size, W=img_size)
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
-
 
 class Discriminator(torch.jit.ScriptModule):
     """
