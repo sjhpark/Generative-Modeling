@@ -127,10 +127,10 @@ def train_model(
                 '''
                 Algorithm 1 in Improved Training of Wasserstein GANs (Gulrajani et al, 2017) https://arxiv.org/pdf/1704.00028.pdf
                 '''
-                x = train_batch # batch of real data
+                x = train_batch # real batch (batch of real data)
                 eps = torch.rand(1).to(x.device) # random number from uniform distribution w/ range [0,1]
 
-                x_tilde = generated_data # generated batch from generator
+                x_tilde = generated_data # G(z); fake batch (generated batch from generator)
                 x_hat = eps * x + (1 - eps) * x_tilde # interpolated batch
 
                 interp = x_hat # interpolated batch
