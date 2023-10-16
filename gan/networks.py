@@ -290,7 +290,12 @@ class Generator(torch.jit.ScriptModule):
         # TODO 1.1: Set up the network layers. You should use the modules
         # you have implemented previously above.
         ##################################################################
-        self.dense = nn.Linear(in_features=128, out_features=2048, bias=True)
+        self.starting_image_size = starting_image_size
+
+        # self.dense = nn.Linear(in_features=128, out_features=2048, bias=True)
+        ##################### FOR DEBUGGING ##############################
+        self.dense = nn.Linear(in_features=128, out_features=256, bias=True)
+        ##################################################################
 
         self.layers = nn.Sequential(
                                     *[ResBlockUp(input_channels=128, n_filters=128, kernel_size=3) for _ in range(3)],
@@ -311,8 +316,8 @@ class Generator(torch.jit.ScriptModule):
         # layer into an image with the appropriate size!
         ##################################################################
         x = self.dense(z) # (n_samples, 2048)
-        x = x.view(-1, 128, 4, 4) # (B=n_samples, C=128, H=4, W=4)
-        x = self.layers(x) # (B=n_samples, C=3, H=[(H−K+2P)/S]+1=[(4-3+2*1)/1]+1=4, W=[(W−K+2P)/S]+1=[(4-3+2*1)/1]+1=4)
+        x = x.view(-1, 128, self.starting_image_size, self.starting_image_size) # (B=n_samples, C=128, H=img_size, W=img_size)
+        x = self.layers(x) # (B=n_samples, C=3, H=[(H−K+2P)/S]+1=[(img_size-3+2*1)/1]+1=img_size, W=[(W−K+2P)/S]+1=[(img_size-3+2*1)/1]+1=img_size)
         return x
         ##################################################################
         #                          END OF YOUR CODE                      #
