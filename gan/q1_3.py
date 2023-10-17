@@ -24,13 +24,16 @@ def compute_discriminator_loss(discrim_real, discrim_fake, discrim_interp, inter
         G: generator network
     '''
     def sigmoid(x):
-        return 1 / (1 + torch.exp(-x))
+        '''
+        sigmoid with clamping to avoid either vanishing or exploding gradients
+        '''
+        eps = 1e-8 # epsilon to avoid NaN
+        return torch.clamp(torch.sigmoid(x), min=eps, max=1-eps)
 
     def BCE_loss_with_logits(input, target):
-        eps = 1e-8 # epsilon to avoid NaN
         loss = -torch.mean(
-                        target * torch.log(sigmoid(input) + eps) +
-                        (1 - target) * torch.log(1 - sigmoid(input) + eps)
+                        target * torch.log(sigmoid(input)) +
+                        (1 - target) * torch.log(1 - sigmoid(input))
                         )
         return loss
     
@@ -57,13 +60,16 @@ def compute_generator_loss(discrim_fake):
         D: discriminator network
     '''
     def sigmoid(x):
-        return 1 / (1 + torch.exp(-x))
+        '''
+        sigmoid with clamping to avoid either vanishing or exploding gradients
+        '''
+        eps = 1e-8 # epsilon to avoid NaN
+        return torch.clamp(torch.sigmoid(x), min=eps, max=1-eps)
 
     def BCE_loss_with_logits(input, target):
-        eps = 1e-8 # epsilon to avoid NaN
         loss = -torch.mean(
-                        target * torch.log(sigmoid(input) + eps) +
-                        (1 - target) * torch.log(1 - sigmoid(input) + eps)
+                        target * torch.log(sigmoid(input)) +
+                        (1 - target) * torch.log(1 - sigmoid(input))
                         )
         return loss
     
@@ -90,9 +96,6 @@ if __name__ == "__main__":
         prefix=prefix,
         gen_loss_fn=compute_generator_loss,
         disc_loss_fn=compute_discriminator_loss,
-        # log_period=1000,
-        ############ FOR DEBIGGING ############
-        log_period=5,
-        #######################################
+        log_period=1000,
         amp_enabled=not args.disable_amp,
     )
