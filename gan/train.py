@@ -152,7 +152,7 @@ def train_model(
                     # TODO 1.2: Generate data from generator. 
                     # Then, compute discriminator output on generated data.
                     ###################################################################
-                    fake_batch = gen() # (B=n_samples, C, H, W); Generated data from generator & noise from Gaussian distribution as input
+                    fake_batch = gen(n_samples) # (B=n_samples, C, H, W); Generated data from generator & noise from Gaussian distribution as input
                     discrim_fake = disc(fake_batch) # (B=n_samples, 1); Discriminator output on generated data
                     ##################################################################
                     #                          END OF YOUR CODE                      #
@@ -172,7 +172,7 @@ def train_model(
                         # TODO 1.2: Generate samples using the generator.
                         # Make sure they lie in the range [0, 1]!
                         ##################################################################
-                        generated_samples = gen() # (B=n_samples, C, H, W); Generated data from generator & noise from Gaussian distribution as input
+                        generated_samples = gen(n_samples) # (B=n_samples, C, H, W); Generated data from generator & noise from Gaussian distribution as input
                         
                         # Normalize generated samples to lie in the range [0, 1]
                         sample_min, sample_max = torch.min(generated_samples), torch.max(generated_samples)
@@ -185,8 +185,8 @@ def train_model(
                         prefix + "samples_{}.png".format(iters),
                         nrow=10,
                     )
-                    # if os.environ.get('PYTORCH_JIT', 1):
-                    if os.environ.get('PYTORCH_JIT') == '1':
+                    if os.environ.get('PYTORCH_JIT', 1):
+                    # if os.environ.get('PYTORCH_JIT') == '1':
                         torch.jit.save(torch.jit.script(gen), prefix + "/generator.pt")
                         torch.jit.save(torch.jit.script(disc), prefix + "/discriminator.pt")
                     else:

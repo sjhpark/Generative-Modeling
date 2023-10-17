@@ -29,14 +29,13 @@ class UpSampleConv2D(torch.jit.ScriptModule):
         
         # 1. Repeat x channel-wise upscale factor^2 times
         # shape (B,C,H,W) -> (B,C*r^2,H,W) where r is an upscale factor
-        x = x.repeat(1, self.upscale_factor**2, 1, 1) # (B,C*r^2,H,W)
+        x = x.repeat(1, int(self.upscale_factor**2), 1, 1) # (B,C*r^2,H,W)
 
         # 2. Use torch.nn.PixelShuffle to form an output of dimension.
         # Rearrange elements in a tensor of shape (B,C*r^2,H,W) -> (B,C,H*r,W*r) where r is an upscale factor.
         # This is useful for implementing efficient sub-pixel convolution with a stride of 1/r.
         # Reference: https://pytorch.org/docs/stable/generated/torch.nn.PixelShuffle.html
-        pixel_shuffle = nn.PixelShuffle(self.upscale_factor)
-        x = pixel_shuffle(x) # (B,C,H*r,W*r)
+        x = F.pixel_shuffle(x, self.upscale_factor) # (B,C,H*r,W*r)
 
         # 3. Apply convolution and return output.
         # (B,C,H*r,W*r) -> CONV LAYER -> (B, C, [(H*r−K+2P)/S]+1, [(W*r−K+2P)/S]+1) where K is kernel size, P is padding, S is stride
@@ -74,9 +73,8 @@ class DownSampleConv2D(torch.jit.ScriptModule):
         # Then rearrange elements in a tensor of shape (B,C*r^2,H/r,W/r) -> (B,C,r^2,H/r,W/r)
         # downscale_factor = self.upscale_factor
         downscale_factor = self.downscale_ratio
-        pixel_unshuffle = nn.PixelUnshuffle(self.downscale_ratio)
-        x = pixel_unshuffle(x) # (B,C*r^2,H/r,W/r)
-        x = x.reshape(x.shape[0], x.shape[1]//downscale_factor**2, downscale_factor**2, x.shape[2], x.shape[3]) # (B,C,r^2,H/r,W/r)
+        x = F.pixel_unshuffle(x, downscale_factor) # (B,C*r^2,H/r,W/r)
+        x = x.reshape(x.shape[0], x.shape[1]//int(downscale_factor**2), int(downscale_factor**2), x.shape[2], x.shape[3]) # (B,C,r^2,H/r,W/r)
 
         # 2. Rearrange shape from (B,C,r^2,H/r,W/r) -> (r^2,B,C,H/r,W/r).
         x = x.permute(2,0,1,3,4) # (r^2,B,C,H/r,W/r)
@@ -292,6 +290,7 @@ class Generator(torch.jit.ScriptModule):
         ##################################################################
         self.starting_image_size = starting_image_size
 
+        self.device = torch.device("cuda:0")
         self.dense = nn.Linear(in_features=128, out_features=2048, bias=True)
 
         self.layers = nn.Sequential(
@@ -301,6 +300,7 @@ class Generator(torch.jit.ScriptModule):
                                     nn.Conv2d(in_channels=128, out_channels=3, kernel_size=3, stride=1, padding=1),
                                     nn.Tanh()
                                     )
+
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -312,8 +312,9 @@ class Generator(torch.jit.ScriptModule):
         # been passed in. Don't forget to re-shape the output of the dense
         # layer into an image with the appropriate size!
         ##################################################################
+        z = z.to(self.device)
         x = self.dense(z) # (n_samples, 2048)
-        x = x.view(-1, 128, self.starting_image_size, self.starting_image_size) # (B=n_samples, C=128, H=img_size, W=img_size)
+        x = x.view(-1, 128, int(self.starting_image_size), int(self.starting_image_size)) # (B=n_samples, C=128, H=img_size, W=img_size)
         x = self.layers(x) # (B=n_samples, C=3, H=img_size*2^3, W=img_size*2^3)
         return x
         ##################################################################
@@ -326,7 +327,7 @@ class Generator(torch.jit.ScriptModule):
         # TODO 1.1: Generate n_samples latents and forward through the
         # network.
         ##################################################################
-        z = torch.randn(n_samples, 128).cuda() # (B=n_samples, 128); n_samples of noise from a Gaussian/Normal distribution (mu=0, sigma=1)
+        z = torch.randn(n_samples, 128) # (B=n_samples, 128); n_samples of noise from a Gaussian/Normal distribution (mu=0, sigma=1)
         return self.forward_given_samples(z) # (B=n_samples, C=3, H=img_size, W=img_size)
         ##################################################################
         #                          END OF YOUR CODE                      #
@@ -393,6 +394,7 @@ class Discriminator(torch.jit.ScriptModule):
         self.layers = nn.Sequential(
                                     ResBlockDown(input_channels=3, n_filters=128, kernel_size=3),
                                     ResBlockDown(input_channels=128, n_filters=128, kernel_size=3),
+                                    ResBlock(input_channels=128, n_filters=128, kernel_size=3),
                                     ResBlock(input_channels=128, n_filters=128, kernel_size=3),
                                     nn.ReLU()
                                     )

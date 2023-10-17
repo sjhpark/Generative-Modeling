@@ -23,24 +23,10 @@ def compute_discriminator_loss(discrim_real, discrim_fake, discrim_interp, inter
         D: discriminator network
         G: generator network
     '''
-    def sigmoid(x):
-        '''
-        sigmoid with clamping to avoid either vanishing or exploding gradients
-        '''
-        eps = 1e-8 # epsilon to avoid NaN
-        return torch.clamp(torch.sigmoid(x), min=eps, max=1-eps)
-
-    def BCE_loss_with_logits(input, target):
-        loss = -torch.mean(
-                        target * torch.log(sigmoid(input)) +
-                        (1 - target) * torch.log(1 - sigmoid(input))
-                        )
-        return loss
-    
     real_label = torch.ones_like(discrim_real) # [1, 1, 1, ...]
     fake_label = torch.zeros_like(discrim_fake) # [0, 0, 0, ...]
-    loss_real = BCE_loss_with_logits(input=discrim_real, target=real_label)
-    loss_fake = BCE_loss_with_logits(input=discrim_fake, target=fake_label)
+    loss_real = F.binary_cross_entropy_with_logits(input=discrim_real, target=real_label)
+    loss_fake = F.binary_cross_entropy_with_logits(input=discrim_fake, target=fake_label)
 
     loss = loss_real + loss_fake
     ##################################################################
@@ -59,22 +45,8 @@ def compute_generator_loss(discrim_fake):
         G: generator network
         D: discriminator network
     '''
-    def sigmoid(x):
-        '''
-        sigmoid with clamping to avoid either vanishing or exploding gradients
-        '''
-        eps = 1e-8 # epsilon to avoid NaN
-        return torch.clamp(torch.sigmoid(x), min=eps, max=1-eps)
-
-    def BCE_loss_with_logits(input, target):
-        loss = -torch.mean(
-                        target * torch.log(sigmoid(input)) +
-                        (1 - target) * torch.log(1 - sigmoid(input))
-                        )
-        return loss
-    
     real_label = torch.ones_like(discrim_fake) # [1, 1, 1, ...]
-    loss = BCE_loss_with_logits(input=discrim_fake, target=real_label)
+    loss = F.binary_cross_entropy_with_logits(input=discrim_fake, target=real_label)
     ##################################################################
     #                          END OF YOUR CODE                      #
     ##################################################################
