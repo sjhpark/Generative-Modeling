@@ -43,7 +43,7 @@ def vae_loss(model, x, beta = 1):
     # Reparameterization trick to sample noise (latent vector) z from N(mu, log_std)
     def reparameterize(mu, log_std):
         std = torch.exp(log_std)
-        eps = torch.rand_like(std)
+        eps = torch.randn_like(std)
         return mu + eps*std
 
     # Reconstruction Loss
@@ -57,6 +57,7 @@ def vae_loss(model, x, beta = 1):
     var = torch.exp(log_var) # variance; (B,latent_dim)
     kl_loss = 0.5 * torch.mean(torch.sum(-1 -log_var + var + mu**2, dim=1), dim=0)
 
+    # Total VAE Loss
     total_loss = recon_loss + beta*kl_loss
     ##################################################################
     #                          END OF YOUR CODE                      #
