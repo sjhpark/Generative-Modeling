@@ -14,15 +14,17 @@ import time
 import os
 from utils import *
 
-def ae_loss(model, x):
+def ae_loss(model, x): # AutoEncoder loss
     ##################################################################
     # TODO 2.2: Fill in MSE loss between x and its reconstruction.
     ##################################################################
-    loss = None
+    recon_x = model.decoder(model.encoder(x)) # reconstructed image
+
+    # MSE Loss summed over all dimensions and averaged over batch size
+    loss = torch.mean(F.mse_loss(input=recon_x, target=x, reduction='sum'), dim=0)
     ##################################################################
     #                          END OF YOUR CODE                      #
     ##################################################################
-
     return loss, OrderedDict(recon_loss=loss)
 
 def vae_loss(model, x, beta = 1):
@@ -38,9 +40,24 @@ def vae_loss(model, x, beta = 1):
     # closed form, you can find the formula here:
     # (https://stats.stackexchange.com/questions/318748/deriving-the-kl-divergence-loss-for-vaes).
     ##################################################################
-    total_loss = None
-    recon_loss = None
-    kl_loss = None
+    # Reparameterization trick to sample noise (latent vector) z from N(mu, log_std)
+    def reparameterize(mu, log_std):
+        std = torch.exp(log_std)
+        eps = torch.rand_like(std)
+        return mu + eps*std
+
+    # Reconstruction Loss
+    mu, log_std = model.encoder(x) # mean, log(std dev) = VAE_Encoder(input image); (B,latent_dim)
+    z = reparameterize(mu, log_std) # latent vector; (B,latent_dim)
+    recon_x = model.decoder(z) # reconstructed image; (B,C,H,W)
+    recon_loss = torch.mean(F.mse_loss(input=recon_x, target=x, reduction='sum'), dim=0)
+
+    # KL Divergence Loss
+    log_var = 2*log_std # log(variance); (B,latent_dim)
+    var = torch.exp(log_var) # variance; (B,latent_dim)
+    kl_loss = 0.5 * torch.mean(torch.sum(-1 -log_var + var + mu**2, dim=1), dim=0)
+
+    total_loss = recon_loss + beta*kl_loss
     ##################################################################
     #                          END OF YOUR CODE                      #
     ##################################################################
@@ -58,7 +75,7 @@ def linear_beta_scheduler(max_epochs=None, target_val = 1):
     # linearly from 0 at epoch 0 to target_val at epoch max_epochs.
     ##################################################################
     def _helper(epoch):
-        pass
+        return target_val * epoch / max_epochs
     ##################################################################
     #                          END OF YOUR CODE                      #
     ##################################################################
@@ -110,7 +127,7 @@ def main(log_dir, loss_mode = 'vae', beta_mode = 'constant', num_epochs = 20, ba
 
     vis_x = next(iter(val_loader))[0][:36]
 
-    #beta_mode is for part 2.3, you can ignore it for parts 2.1, 2.2
+    # beta is for part 2.3, you can ignore it for parts 2.1, 2.2
     if beta_mode == 'constant':
         beta_fn = constant_beta_scheduler(target_val = target_beta_val)
     elif beta_mode == 'linear':
