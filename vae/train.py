@@ -58,10 +58,11 @@ def vae_loss(model, x, beta = 1):
     # KL Divergence Loss
     log_var = 2*log_std # log(variance); (B,latent_dim)
     var = torch.exp(log_var) # variance; (B,latent_dim)
-    kl_loss = 0.5 * torch.sum(-1 -log_var + var + mu**2, dim=1) / x.shape[0]
+    kl_loss = 0.5 * torch.mean(torch.sum(-1 -log_var + var + mu**2, dim=1), dim=0)
 
     # Total VAE Loss
     total_loss = recon_loss + beta*kl_loss
+    
     ##################################################################
     #                          END OF YOUR CODE                      #
     ##################################################################
