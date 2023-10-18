@@ -119,6 +119,7 @@ class DiffusionModel(nn.Module):
         # Predicted starting image
         x_hat_0 = extract(self.x_0_pred_coef_1, t, x_t.shape) * x_t \
                     + extract(self.x_0_pred_coef_2, t, x_t.shape) * eps_t
+        x_hat_0.clamp_(-1., 1.)
         
         ##################################################################
         #                          END OF YOUR CODE                      #
@@ -131,8 +132,7 @@ class DiffusionModel(nn.Module):
         # TODO 3.1: Given x at timestep t, predict the denoised image at
         # x_{t-1}, and return the predicted starting image.
         # noise to predict the additive noise, use the denoising model.
-        # Hint: To do this, you will need a predicted x_0. You should've
-        # already implemented a function to give you x_0 above!
+        # Hint: To do this, you will need a predicted x_0.
         ##################################################################
         # Predicted noise & Predicted starting image
         eps_t, x_hat_0 = self.model_predictions(x, t)
@@ -141,18 +141,25 @@ class DiffusionModel(nn.Module):
         mu, var, logvar_clipped = self.get_posterior_parameters(x_hat_0, x, t)
 
         # Reparameterization Trick
-        def reparameterize(mu, logvar):
+        def reparameterize(mu, var, t):
             '''
             Reparameterization trick to sample from N(mu, std)
                 N(mu, std): Normal Distribution
             '''
-            logstd = 0.5 * logvar # log of standard dev
-            std = torch.exp(logstd) # standard dev
-            eps = torch.randn_like(std) # noise sampled from N(0,1) where N(0,1) is Standard Normal Distribution
+            std = torch.sqrt(var) # std = sigma = standard deviation of Gaussian Distribution
+
+            # Sample a noise vector if t > 0 otherwise, = 0
+            if t.min() > 0:
+                eps = torch.randn_like(std) # noise sampled from N(0,1) where N(0,1) is Standard Normal Distribution
+            else:
+                eps = torch.zeros_like(std)
+                negative_t_mask = t > 0
+                eps[negative_t_mask] = torch.randn_like(std[negative_t_mask])
+
             return mu + std * eps
 
         # Denoised image at timestamp t-1
-        pred_img = reparameterize(mu, logvar_clipped) # x_{t-1}; denoised image at timestep t-1
+        pred_img = reparameterize(mu, var) # x_{t-1}; denoised image at timestep t-1
 
         ##################################################################
         #                          END OF YOUR CODE                      #
