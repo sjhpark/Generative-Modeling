@@ -40,11 +40,14 @@ def vae_loss(model, x, beta = 1):
     # closed form, you can find the formula here:
     # (https://stats.stackexchange.com/questions/318748/deriving-the-kl-divergence-loss-for-vaes).
     ##################################################################
-    # Reparameterization trick to sample noise (latent vector) z from N(mu, log_std)
     def reparameterize(mu, log_std):
-        std = torch.exp(log_std)
-        eps = torch.randn_like(std)
-        return mu + eps*std
+        '''
+        Reparameterization trick to sample noise (latent vector) z from N(mu, log_std)
+            N(mu, log_std): Normal distribution
+        '''
+        std = torch.exp(log_std) # standard deviation
+        eps = torch.randn_like(std) # noise sampled from N(0,1) where N(0,1) is Standard Normal Distribution
+        return mu + std * eps
 
     # Reconstruction Loss
     mu, log_std = model.encoder(x) # mean, log(std dev) = VAE_Encoder(input image); (B,latent_dim)
