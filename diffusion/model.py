@@ -3,12 +3,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
-from utils import (
-    cosine_beta_schedule,
-    default,
-    extract,
-    unnormalize_to_zero_to_one,
-)
+from utils import (cosine_beta_schedule,default,
+                    extract,unnormalize_to_zero_to_one)
 from einops import rearrange, reduce
 
 class DiffusionModel(nn.Module):
@@ -25,43 +21,73 @@ class DiffusionModel(nn.Module):
         self.channels = self.model.channels
         self.device = torch.cuda.current_device()
 
+        # beta_t
         self.betas = cosine_beta_schedule(timesteps).to(self.device)
         self.num_timesteps = self.betas.shape[0]
 
-        alphas = 1. - self.betas
+        # alpha_t
+        alphas = 1. - self.betas # e.g. [1,2,3,4,5]
         ##################################################################
         # TODO 3.1: Compute the cumulative products for current and
         # previous timesteps.
         ##################################################################
-        self.alphas_cumprod = None
-        self.alphas_cumprod_prev =  None
+        # alpha_bar_t: Cumulative product of alphas from 0 to t
+        self.alphas_cumprod = alphas.cumprod(dim=0) # e.g. [1, 2, 6, 24, 120]
+
+        # alpha_bar_{t-1}: Cumulative product of alphas from 0 to t-1
+        self.alphas_cumprod_prev = torch.concat([torch.ones(1), self.alphas_cumprod[:-1]], dim=0) # e.g. [1, 1, 2, 6, 24]
 
         ##################################################################
         # TODO 3.1: Pre-compute values needed for forward process.
         ##################################################################
-        # This is the coefficient of x_t when predicting x_0
-        self.x_0_pred_coef_1 = None
-        # This is the coefficient of pred_noise when predicting x_0
-        self.x_0_pred_coef_2 = None
+        '''
+        x_0_hat = 1/sqrt(alpha_bar_t) * x_t - [1/sqrt(alpha_bar_t) * sqrt(1 - alpha_bar_t)] * eps_t
+            x_0: starting image
+            x_0_hat: predicted starting image
+            x_t: current noised image at timestamp t
+            alpha_bar_t: cumulative product of alpha_t from 0 to t
+            eps_t <-- f(x_t, t): predicted noise at timestamp t
+                f(): denoising network (takes noised image & timestamp as inputs) to predict noise at timestamp t
+        '''
+        # Coefficient of x_t when predicting x_0
+        self.x_0_pred_coef_1 = 1/torch.sqrt(self.alphas_cumprod)
+
+        # Coefficient of pred_noise when predicting x_0
+        self.x_0_pred_coef_2 = -torch.sqrt(1 - self.alphas_cumprod)/torch.sqrt(self.alphas_cumprod)
 
         ##################################################################
         # TODO 3.1: Compute the coefficients for the mean.
         ##################################################################
-        # This is coefficient of x_0 in the DDPM section
-        self.posterior_mean_coef1 = None
-        # This is coefficient of x_t in the DDPM section
-        self.posterior_mean_coef2 = None
+        '''
+        mu_tilde = [sqrt(alpha_t) * (1 - alpha_bar_{t-1}) / (1 - alpha_bar_t)] * x_t + [sqrt(alpha_bar_{t-1}) * beta_t / (1 - alpha_bar_t)] * x_hat_0
+            mu_tilde = mean of Gaussian Distribution for sampling x_{t-1} given x_t and x_hat_0
+            alpha_bar_t: cumulative product of alpha_t from 0 to t
+            alpha_bar_{t-1}: cumulative product of alpha_t from -1 to t-1
+            beta_t: diffusion rate at timestamp t
+            x_hat_0: predicted starting image
+        '''
+        # Coefficient of x_0 in the DDPM section
+        self.posterior_mean_coef1 = torch.sqrt(self.alphas_cumprod_prev) * self.betas / (1 - self.alphas_cumprod)
+
+        # Coefficient of x_t in the DDPM section
+        self.posterior_mean_coef2 = torch.sqrt(alphas) * (1 - self.alphas_cumprod_prev) / (1 - self.alphas_cumprod)
 
         ##################################################################
         # TODO 3.1: Compute posterior variance.
         ##################################################################
-        # Calculations for posterior q(x_{t-1} | x_t, x_0) in DDPM
-        self.posterior_variance = None
+        '''
+        sigma^2_t = [(1 - alpha_bar_{t-1}) / (1 - alpha_bar_t)] * beta_t
+            sigma^2_t: variance of Gaussian Distribution for sampling x_{t-1} given x_t and x_hat_0
+            alpha_bar_t: cumulative product of alpha_t from 0 to t
+            alpha_bar_{t-1}: cumulative product of alpha_t from -1 to t-1
+            beta_t: diffusion rate at timestamp t
+        '''
+        # Variance of posterior conditional distribution q(x_{t-1} | x_t, x_0) in DDPM
+        self.posterior_variance = (1 - self.alphas_cumprod_prev) * self.betas / (1 - self.alphas_cumprod)
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
-        self.posterior_log_variance_clipped = torch.log(
-            self.posterior_variance.clamp(min =1e-20))
+        self.posterior_log_variance_clipped = torch.log(self.posterior_variance.clamp(min =1e-20))
 
         # sampling related parameters
         self.sampling_timesteps = default(sampling_timesteps, timesteps) # default num sampling timesteps to number of timesteps at training
@@ -73,10 +99,9 @@ class DiffusionModel(nn.Module):
     def get_posterior_parameters(self, x_0, x_t, t):
         # Compute the posterior mean and variance for x_{t-1}
         # using the coefficients, x_t, and x_0.
-        posterior_mean = (
-            extract(self.posterior_mean_coef1, t, x_t.shape) * x_0 +
-            extract(self.posterior_mean_coef2, t, x_t.shape) * x_t
-        )
+        posterior_mean = extract(self.posterior_mean_coef1, t, x_t.shape) * x_0 \
+                            + extract(self.posterior_mean_coef2, t, x_t.shape) * x_t
+
         posterior_variance = extract(self.posterior_variance, t, x_t.shape)
         posterior_log_variance_clipped = extract(self.posterior_log_variance_clipped, t, x_t.shape)
         return posterior_mean, posterior_variance, posterior_log_variance_clipped
@@ -88,12 +113,17 @@ class DiffusionModel(nn.Module):
         # Hint: You can use extract function from utils.py. See
         # get_posterior_parameters() for usage examples.
         ##################################################################
-        pred_noise = None
-        x_0 = None
+        # Predicted noise at timestamp t
+        eps_t = self.model(x=x_t, time=t) # eps_t <-- f(x_t, t) where f is the denoising network
+
+        # Predicted starting image
+        x_hat_0 = extract(self.x_0_pred_coef_1, t, x_t.shape) * x_t \
+                    + extract(self.x_0_pred_coef_2, t, x_t.shape) * eps_t
+        
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
-        return (pred_noise, x_0)
+        return (eps_t, x_hat_0)
 
     @torch.no_grad()
     def predict_denoised_at_prev_timestep(self, x, t: int):
@@ -104,12 +134,30 @@ class DiffusionModel(nn.Module):
         # Hint: To do this, you will need a predicted x_0. You should've
         # already implemented a function to give you x_0 above!
         ##################################################################
-        pred_img = None
-        x_0 = None
+        # Predicted noise & Predicted starting image
+        eps_t, x_hat_0 = self.model_predictions(x, t)
+        
+        # Mean, Variance, and Clipped Log Variance of Posterior Conditional Distribution q(x_{t-1} | x_t, x_0)
+        mu, var, logvar_clipped = self.get_posterior_parameters(x_hat_0, x, t)
+
+        # Reparameterization Trick
+        def reparameterize(mu, logvar):
+            '''
+            Reparameterization trick to sample from N(mu, std)
+                N(mu, std): Normal Distribution
+            '''
+            logstd = 0.5 * logvar # log of standard dev
+            std = torch.exp(logstd) # standard dev
+            eps = torch.randn_like(std) # noise sampled from N(0,1) where N(0,1) is Standard Normal Distribution
+            return mu + std * eps
+
+        # Denoised image at timestamp t-1
+        pred_img = reparameterize(mu, logvar_clipped) # x_{t-1}; denoised image at timestep t-1
+
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
-        return pred_img, x_0
+        return pred_img, x_hat_0
 
     @torch.no_grad()
     def sample_ddpm(self, shape, z):
