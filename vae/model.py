@@ -30,7 +30,7 @@ class Encoder(nn.Module):
         ##################################################################
         self.convs = nn.Sequential(
                                 nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, stride=1, padding=1),
-                                *[nn.ReLU(), nn.Conv2d(in_channels=32*2**i, out_channels=64*2**i, kernel_size=3, stride=1, padding=1) for i in range(3)]
+                                *[nn.Sequential(nn.ReLU(), nn.Conv2d(in_channels=32*2**i, out_channels=64*2**i, kernel_size=3, stride=2, padding=1)) for i in range(3)]
                                 )
         H, W = input_shape[-2]//8, input_shape[-1]//8 # convs output image shape
         convs_out_dim = 256 * (H) * (W) # flattened convs output dimension (C*H_reduced*W_reduced)
@@ -47,6 +47,7 @@ class Encoder(nn.Module):
         x = self.convs(x) # (B,C,H_reduced,W_reduced)
         x = x.view(x.shape[0], -1) # (B,C*H_reduced*W_reduced)
         x = self.fc(x) # (B,latent_dim)
+        return x
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
@@ -110,7 +111,7 @@ class Decoder(nn.Module):
         self.base_size = 256 * (output_shape[-2]//8) * (output_shape[-1]//8) # flattened convs output dimension (C*H_reduced*W_reduced)
         self.fc = nn.Linear(self.latent_dim, self.base_size)
         self.deconvs = nn.Sequential(
-                                    *[nn.ReLU(), nn.ConvTranspose2d(in_channels=256//2**i, out_channels=128//2**i, kernel_size=4, stride=2, padding=1) for i in range(3)],
+                                    *[nn.Sequential(nn.ReLU(), nn.ConvTranspose2d(in_channels=256//2**i, out_channels=128//2**i, kernel_size=4, stride=2, padding=1)) for i in range(3)],
                                     nn.ReLU(),
                                     nn.Conv2d(in_channels=32, out_channels=3, kernel_size=3, stride=1, padding=1)
                                     )
@@ -127,6 +128,7 @@ class Decoder(nn.Module):
         x = self.fc(z) # (B,base_size)
         x = x.reshape(x.shape[0], 256, self.output_shape[-2]//8, self.output_shape[-1]//8) # (B,C,H_reduced,W_reduced)
         x = self.deconvs(x) # (B,C,H,W)
+        return x
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################

@@ -21,7 +21,7 @@ def ae_loss(model, x): # AutoEncoder loss
     recon_x = model.decoder(model.encoder(x)) # reconstructed image
 
     # MSE Loss summed over all dimensions and averaged over batch size
-    loss = torch.mean(F.mse_loss(input=recon_x, target=x, reduction='sum'), dim=0)
+    loss = F.mse_loss(input=recon_x, target=x, reduction='sum') / x.shape[0]
     ##################################################################
     #                          END OF YOUR CODE                      #
     ##################################################################
@@ -53,12 +53,12 @@ def vae_loss(model, x, beta = 1):
     mu, log_std = model.encoder(x) # mean, log(std dev) = VAE_Encoder(input image); (B,latent_dim)
     z = reparameterize(mu, log_std) # latent vector; (B,latent_dim)
     recon_x = model.decoder(z) # reconstructed image; (B,C,H,W)
-    recon_loss = torch.mean(F.mse_loss(input=recon_x, target=x, reduction='sum'), dim=0)
+    recon_loss = F.mse_loss(input=recon_x, target=x, reduction='sum') / x.shape[0]
 
     # KL Divergence Loss
     log_var = 2*log_std # log(variance); (B,latent_dim)
     var = torch.exp(log_var) # variance; (B,latent_dim)
-    kl_loss = 0.5 * torch.mean(torch.sum(-1 -log_var + var + mu**2, dim=1), dim=0)
+    kl_loss = 0.5 * torch.sum(-1 -log_var + var + mu**2, dim=1) / x.shape[0]
 
     # Total VAE Loss
     total_loss = recon_loss + beta*kl_loss
