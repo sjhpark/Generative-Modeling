@@ -33,10 +33,11 @@ class DiffusionModel(nn.Module):
         ##################################################################
         # alpha_bar_t: Cumulative product of alphas from 0 to t
         self.alphas_cumprod = alphas.cumprod(dim=0) # e.g. [1, 2, 6, 24, 120]
+        self.device = self.alphas_cumprod.device
 
         # alpha_bar_{t-1}: Cumulative product of alphas from 0 to t-1
-        self.alphas_cumprod_prev = torch.concat([torch.ones(1), self.alphas_cumprod[:-1]], dim=0) # e.g. [1, 1, 2, 6, 24]
-
+        self.alphas_cumprod_prev = torch.concat([torch.ones(1).to(self.device), self.alphas_cumprod[:-1]], dim=0) # e.g. [1, 1, 2, 6, 24]
+        
         ##################################################################
         # TODO 3.1: Pre-compute values needed for forward process.
         ##################################################################
@@ -54,7 +55,7 @@ class DiffusionModel(nn.Module):
 
         # Coefficient of pred_noise when predicting x_0
         self.x_0_pred_coef_2 = -torch.sqrt(1 - self.alphas_cumprod) / torch.sqrt(self.alphas_cumprod)
-
+        
         ##################################################################
         # TODO 3.1: Compute the coefficients for the mean.
         ##################################################################
@@ -131,7 +132,7 @@ class DiffusionModel(nn.Module):
         # Predicted starting image
         x_hat_0 = extract(self.x_0_pred_coef_1, t, x_t.shape) * x_t \
                     + extract(self.x_0_pred_coef_2, t, x_t.shape) * eps_t
-        x_hat_0.clamp_(-1., 1.)
+        x_hat_0 = x_hat_0.clamp(min=-1, max=1)
         
         ##################################################################
         #                          END OF YOUR CODE                      #
@@ -174,16 +175,38 @@ class DiffusionModel(nn.Module):
 
             # Sample a noise vector if t > 0 otherwise, = 0
             if t.min() > 0:
-                z = torch.randn_like(std) # noise sampled from N(0,1) where N(0,1) is Standard Normal Distribution
+                z = torch.randn_like(mu) # noise sampled from N(0,1) where N(0,1) is Standard Normal Distribution
             else:
-                z = torch.zeros_like(std)
+                z = torch.zeros_like(mu)
                 negative_t_mask = t > 0
                 z[negative_t_mask] = torch.randn_like(std[negative_t_mask])
 
             return mu + std * z # x_{t-1}
 
         # Denoised image at timestamp t-1
-        pred_img = reparameterize(mu_tilde_t, var_t) # x_{t-1}; denoised image at timestep t-1
+        pred_img = reparameterize(mu_tilde_t, var_t, t) # x_{t-1}; denoised image at timestep t-1
+        
+
+        # def reparameterize(mu, logvar, t):
+        #     '''
+        #     Reparameterization trick to sample from N(mu, std)
+        #         N(mu, std): Normal Distribution
+        #     '''
+        #     logstd = 0.5 * logvar
+        #     std = torch.exp(logstd)
+
+        #     # Sample a noise vector if t > 0 otherwise, = 0
+        #     if t.min() > 0:
+        #         z = torch.randn_like(mu) # noise sampled from N(0,1) where N(0,1) is Standard Normal Distribution
+        #     else:
+        #         z = torch.zeros_like(mu)
+        #         negative_t_mask = t > 0
+        #         z[negative_t_mask] = torch.randn_like(std[negative_t_mask])
+
+        #     return mu + std * z # x_{t-1}
+
+        # # Denoised image at timestamp t-1
+        # pred_img = reparameterize(mu_tilde_t, logvar_clipped_t, t) # x_{t-1}; denoised image at timestep t-1
 
         ##################################################################
         #                          END OF YOUR CODE                      #
@@ -243,9 +266,9 @@ class DiffusionModel(nn.Module):
 
             # Sample a noise vector if t > 0 otherwise, = 0
             if t.min() > 0:
-                z = torch.randn_like(std) # noise sampled from N(0,1) where N(0,1) is Standard Normal Distribution
+                z = torch.randn_like(mu) # noise sampled from N(0,1) where N(0,1) is Standard Normal Distribution
             else:
-                z = torch.zeros_like(std)
+                z = torch.zeros_like(mu)
                 negative_t_mask = t > 0
                 z[negative_t_mask] = torch.randn_like(std[negative_t_mask])
 
