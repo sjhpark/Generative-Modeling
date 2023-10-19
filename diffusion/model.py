@@ -217,7 +217,7 @@ class DiffusionModel(nn.Module):
         # Step 1: Predicted noise & Predicted starting image at timestamp tau_i
         eps_tau_i, x_hat_0 = model_predictions(img, tau_i)
 
-        if tau_isub1 >= 0:
+        if tau_isub1 >= 0: # if tau_{i - 1} >= 0
 
             # Step 2: Extract alpha_tau_{i - 1} and alpha_tau_i
             alphas_tau_isub1 = extract(alphas_cumprod, tau_isub1, img.shape) # alpha_tau_{i - 1}
@@ -225,25 +225,21 @@ class DiffusionModel(nn.Module):
 
             # Step 3: Compute sigma_tau_i
             beta_tau_isub1 = 1 - alphas_tau_isub1 # beta_tau_{i - 1}
-            # alphas_bar_tau_isub1 = alphas_cumprod[tau_isub1] # alpha_bar_tau_{i - 1}
-            # alphas_bar_tau_i = alphas_cumprod[tau_i] # alpha_bar_tau_i
-            alphas_bar_tau_isub1 = alphas_tau_isub1
-            alphas_bar_tau_i = alphas_tau_i
+            alphas_bar_tau_isub1 = alphas_tau_isub1 # alphas_bar_tau_{i - 1}
+            alphas_bar_tau_i = alphas_tau_i # alphas_bar_tau_i
             beta_tilde_tau_i = (1 - alphas_bar_tau_isub1) * beta_tau_isub1 / (1 - alphas_bar_tau_i) # beta_tilde_tau_i
 
             var_tau_i = eta * beta_tilde_tau_i # variance of Posterior Conditional Distribution at timestamp tau_i
             sigma_tau_i = torch.sqrt(var_tau_i) # standard dev of Posterior Conditional Distribution at timestamp tau_i
 
             # Step 4: Compute the coefficient of epsilon_tau_i
-            eps_tau_i_coef = torch.sqrt(1 - alphas_bar_tau_isub1 - var_tau_i)
+            eps_tau_i_coef = torch.sqrt(1 - alphas_bar_tau_isub1 - var_tau_i) # coefficient for epsilon_tau_i
 
-            # Step 5: Sample from q(x_{\tau_{i - 1}} | x_{\tau_t}, x_0)
-            # HINT: Use the reparameterization trick
-            mu_tilde_tau_i = torch.sqrt(alphas_bar_tau_isub1) * x_hat_0 + eps_tau_i_coef * eps_tau_i
-
+            # Step 5: Sample from q(x_tau_{i - 1} | x_tau_t, x_0) (Posterior Conditional Distribution at timestamp tau_i given x_tau_t and x_0)
             # Reparameterization Trick
-            z = torch.randn_like(mu_tilde_tau_i)
-            img = mu_tilde_tau_i + sigma_tau_i * z
+            mu_tilde_tau_i = torch.sqrt(alphas_bar_tau_isub1) * x_hat_0 + eps_tau_i_coef * eps_tau_i # mean of Posterior Conditional Distribution at timestamp tau_i
+            z = torch.randn_like(mu_tilde_tau_i) # noise sampled from N(0,1) where N(0,1) is Standard Normal Distribution
+            img = mu_tilde_tau_i + sigma_tau_i * z # x_tau_{i - 1}; denoised image at timestamp tau_{i - 1}
         
         else:
             img = x_hat_0
