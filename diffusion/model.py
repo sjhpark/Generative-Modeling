@@ -185,28 +185,6 @@ class DiffusionModel(nn.Module):
 
         # Denoised image at timestamp t-1
         pred_img = reparameterize(mu_tilde_t, var_t, t) # x_{t-1}; denoised image at timestep t-1
-        
-
-        # def reparameterize(mu, logvar, t):
-        #     '''
-        #     Reparameterization trick to sample from N(mu, std)
-        #         N(mu, std): Normal Distribution
-        #     '''
-        #     logstd = 0.5 * logvar
-        #     std = torch.exp(logstd)
-
-        #     # Sample a noise vector if t > 0 otherwise, = 0
-        #     if t.min() > 0:
-        #         z = torch.randn_like(mu) # noise sampled from N(0,1) where N(0,1) is Standard Normal Distribution
-        #     else:
-        #         z = torch.zeros_like(mu)
-        #         negative_t_mask = t > 0
-        #         z[negative_t_mask] = torch.randn_like(std[negative_t_mask])
-
-        #     return mu + std * z # x_{t-1}
-
-        # # Denoised image at timestamp t-1
-        # pred_img = reparameterize(mu_tilde_t, logvar_clipped_t, t) # x_{t-1}; denoised image at timestep t-1
 
         ##################################################################
         #                          END OF YOUR CODE                      #
@@ -234,51 +212,45 @@ class DiffusionModel(nn.Module):
         # TODO 3.2: Compute the output image for a single step of the DDIM
         # sampling process.
         ##################################################################
+        tau_i, tau_isub1 = torch.tensor(tau_i, device=device).reshape([1]), torch.tensor(tau_isub1, device=device).reshape([1])
+        
         # Step 1: Predicted noise & Predicted starting image at timestamp tau_i
         eps_tau_i, x_hat_0 = model_predictions(img, tau_i)
 
-        # Step 2: Extract alpha_tau_{i - 1} and alpha_tau_i
-        alphas_tau_isub1 = extract(alphas_cumprod, tau_isub1, img.shape) # alpha_tau_{i - 1}
-        alphas_tau_i = extract(alphas_cumprod, tau_i, img.shape) # alpha_tau_i
+        if tau_isub1 >= 0:
 
-        # Step 3: Compute sigma_tau_i
-        beta_tau_isub1 = 1 - alphas_tau_isub1 # beta_tau_{i - 1}
-        alphas_bar_tau_isub1 = alphas_cumprod[tau_isub1] # alpha_bar_tau_{i - 1}
-        alphas_bar_tau_i = alphas_cumprod[tau_i] # alpha_bar_tau_i
-        beta_bar_tau_i = (1 - alphas_bar_tau_isub1) * beta_tau_isub1 / (1 - alphas_bar_tau_i) # beta_bar_tau_i
+            # Step 2: Extract alpha_tau_{i - 1} and alpha_tau_i
+            alphas_tau_isub1 = extract(alphas_cumprod, tau_isub1, img.shape) # alpha_tau_{i - 1}
+            alphas_tau_i = extract(alphas_cumprod, tau_i, img.shape) # alpha_tau_i
 
-        var_tau_i = eta * beta_bar_tau_i # variance of Posterior Conditional Distribution at timestamp tau_i
-        sigma_tau_i = torch.sqrt(var_tau_i) # standard dev of Posterior Conditional Distribution at timestamp tau_i
+            # Step 3: Compute sigma_tau_i
+            beta_tau_isub1 = 1 - alphas_tau_isub1 # beta_tau_{i - 1}
+            # alphas_bar_tau_isub1 = alphas_cumprod[tau_isub1] # alpha_bar_tau_{i - 1}
+            # alphas_bar_tau_i = alphas_cumprod[tau_i] # alpha_bar_tau_i
+            alphas_bar_tau_isub1 = alphas_tau_isub1
+            alphas_bar_tau_i = alphas_tau_i
+            beta_tilde_tau_i = (1 - alphas_bar_tau_isub1) * beta_tau_isub1 / (1 - alphas_bar_tau_i) # beta_tilde_tau_i
 
-        # Step 4: Compute the coefficient of epsilon_tau_i
-        eps_tau_i_coef = -torch.sqrt(1 - alphas_bar_tau_isub1 - var_tau_i)
+            var_tau_i = eta * beta_tilde_tau_i # variance of Posterior Conditional Distribution at timestamp tau_i
+            sigma_tau_i = torch.sqrt(var_tau_i) # standard dev of Posterior Conditional Distribution at timestamp tau_i
 
-        # Step 5: Sample from q(x_{\tau_{i - 1}} | x_{\tau_t}, x_0)
-        # HINT: Use the reparameterization trick
-        mu_tilde_tau_i = torch.sqrt(alphas_bar_tau_isub1) * x_hat_0 + eps_tau_i_coef * eps_tau_i
+            # Step 4: Compute the coefficient of epsilon_tau_i
+            eps_tau_i_coef = torch.sqrt(1 - alphas_bar_tau_isub1 - var_tau_i)
 
-        def reparameterize(mu, var, t):
-            '''
-            Reparameterization trick to sample from N(mu, std)
-                N(mu, std): Normal Distribution
-            '''
-            std = torch.sqrt(var) # std = sigma = standard deviation of Gaussian Distribution
+            # Step 5: Sample from q(x_{\tau_{i - 1}} | x_{\tau_t}, x_0)
+            # HINT: Use the reparameterization trick
+            mu_tilde_tau_i = torch.sqrt(alphas_bar_tau_isub1) * x_hat_0 + eps_tau_i_coef * eps_tau_i
 
-            # Sample a noise vector if t > 0 otherwise, = 0
-            if t.min() > 0:
-                z = torch.randn_like(mu) # noise sampled from N(0,1) where N(0,1) is Standard Normal Distribution
-            else:
-                z = torch.zeros_like(mu)
-                negative_t_mask = t > 0
-                z[negative_t_mask] = torch.randn_like(std[negative_t_mask])
+            # Reparameterization Trick
+            z = torch.randn_like(mu_tilde_tau_i)
+            img = mu_tilde_tau_i + sigma_tau_i * z
+        
+        else:
+            img = x_hat_0
 
-            return mu + std * z # x_{t-1}
-
-        img = reparameterize(mu_tilde_tau_i, var_tau_i, tau_i) # x_tau_{i-1}
         ##################################################################
         #                          END OF YOUR CODE                      #
         ##################################################################
-
         return img, x_hat_0
 
     def sample_ddim(self, shape, z):
@@ -290,7 +262,7 @@ class DiffusionModel(nn.Module):
         img = z
         for tau_i, tau_isub1 in tqdm(time_pairs, desc='sampling loop time step'):
             img, _ = self.ddim_step(batch, device, tau_i, tau_isub1, img, self.model_predictions, self.alphas_cumprod, eta)
-
+        
         img = unnormalize_to_zero_to_one(img)
         return img
 

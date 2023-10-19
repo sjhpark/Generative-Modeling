@@ -14,17 +14,20 @@ def get_fid(gen, dataset_name, dataset_resolution, z_dimension, batch_size, num_
     # diffusion model given z
     # Note: The output must be in the range [0, 255]!
     ##################################################################
-    H, W = dataset_resolution, dataset_resolution # Height and width of the images
-    n_channels = 3 # RGB
+    def gen_fn(z):
+        H, W = dataset_resolution, dataset_resolution # Height and width of the images
+        n_channels = 3 # RGB
 
-    # Noise
-    z = torch.randn(batch_size, n_channels, H, W).cuda()
+        # Noise
+        z = torch.randn(batch_size, n_channels, H, W).cuda()
 
-    # Sample images (pixels are in range [0, 1])
-    gen_fn = gen.sample_given_z(z, z.shape)
+        # Sample images (pixels are in range [-3, 3] b/c the noise is sampled from standard normal distribution)
+        samples = gen.sample_given_z(z, z.shape)
 
-    # Make pixles of the images in range [0, 255]
-    gen_fn = gen_fn * 255
+        # Make pixles of the images in range [0, 255]
+        samples = (samples + 3) * (255 / 6)
+
+        return samples
     ##################################################################
     #                          END OF YOUR CODE                      #
     ##################################################################
@@ -48,7 +51,7 @@ if __name__ == "__main__":
     parser.add_argument('--sampling-method', choices=['ddpm', 'ddim'])
     parser.add_argument('--ddim-timesteps', type=int, default=25, help="Number of timesteps to sample for DDIM")
     parser.add_argument('--ddim-eta', type=int, default=1, help="Eta for DDIM")
-    parser.add_argument('--compute-fid', action="store_true")
+    parser.add_argument('--compute_fid', action="store_true")
     args = parser.parse_args()
 
     prefix = f"data_{args.sampling_method}/"
@@ -56,17 +59,17 @@ if __name__ == "__main__":
         os.makedirs(prefix)
 
     sampling_timesteps = args.ddim_timesteps if args.sampling_method == "ddim" else None
+    print("sampling_timesteps: ", sampling_timesteps)
 
-    model = Unet(
-        dim=64,
-        dim_mults=(1, 2, 4, 8)
-    ).cuda()
-    diffusion = DiffusionModel(
-        model,
-        timesteps=1000,   # number of timesteps
-        sampling_timesteps=sampling_timesteps,
-        ddim_sampling_eta=args.ddim_eta,
-    ).cuda()
+    model = Unet(dim=64, dim_mults=(1, 2, 4, 8)).cuda()
+
+    diffusion = DiffusionModel(model,
+                            # timesteps=1000,   # number of timesteps
+                            timesteps=1000,
+                            # sampling_timesteps=25,
+                            sampling_timesteps=sampling_timesteps,
+                            ddim_sampling_eta=args.ddim_eta,
+                            ).cuda()
 
     img_shape = (args.num_images, diffusion.channels, args.image_size, args.image_size)
 
@@ -85,7 +88,7 @@ if __name__ == "__main__":
             generated_samples.data.float(),
             prefix + f"samples_{args.sampling_method}.png",
             nrow=10,
-        )
+            )
         if args.compute_fid:
             # NOTE: This will take a very long time to run even though we are only doing 10K samples.
             score = get_fid(diffusion, "cifar10", 32, 32*32*3, batch_size=256, num_gen=10_000)
