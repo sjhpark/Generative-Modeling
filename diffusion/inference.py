@@ -64,9 +64,7 @@ if __name__ == "__main__":
     model = Unet(dim=64, dim_mults=(1, 2, 4, 8)).cuda()
 
     diffusion = DiffusionModel(model,
-                            # timesteps=1000,   # number of timesteps
-                            timesteps=1000,
-                            # sampling_timesteps=25,
+                            timesteps=1000,   # number of timesteps
                             sampling_timesteps=sampling_timesteps,
                             ddim_sampling_eta=args.ddim_eta,
                             ).cuda()
