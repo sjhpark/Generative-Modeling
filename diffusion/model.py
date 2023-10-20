@@ -166,12 +166,13 @@ class DiffusionModel(nn.Module):
         mu_tilde_t, var_t, logvar_clipped_t = self.get_posterior_parameters(x_hat_0, x, t)
 
         # Reparameterization Trick
-        def reparameterize(mu, var, t):
+        def reparameterize(mu, logvar, t):
             '''
             Reparameterization trick to sample from N(mu, std)
                 N(mu, std): Normal Distribution
             '''
-            std = torch.sqrt(var) # std = sigma = standard deviation of Gaussian Distribution
+            logstd = logvar * 0.5
+            std = torch.exp(logstd) # standard dev of Gaussian Distribution
 
             # Sample a noise vector if t > 0 otherwise, = 0
             if t.min() > 0:
@@ -184,7 +185,7 @@ class DiffusionModel(nn.Module):
             return mu + std * z # x_{t-1}
 
         # Denoised image at timestamp t-1
-        pred_img = reparameterize(mu_tilde_t, var_t, t) # x_{t-1}; denoised image at timestep t-1
+        pred_img = reparameterize(mu_tilde_t, logvar_clipped_t, t) # x_{t-1}; denoised image at timestep t-1
 
         ##################################################################
         #                          END OF YOUR CODE                      #
